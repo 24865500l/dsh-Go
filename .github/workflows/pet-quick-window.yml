@@ -15,7 +15,7 @@ on:
     branches: [pet-quick-window]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pet-apk-${{ github.ref }}
@@ -92,3 +92,13 @@ jobs:
           path: app/build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      # artifact 在 Azure blob 上，国内经常下不动；发一个 release，走加速镜像取。
+      - name: Publish a release with the APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete pet-v1 --yes --cleanup-tag 2>/dev/null || true
+          gh release create pet-v1 app/build/app/outputs/flutter-apk/app-arm64-release.apk \
+            --title "三连点快捷对话浮窗" \
+            --notes "宠物连点三下打开问一句浮窗，带语音与 token 明细。"
