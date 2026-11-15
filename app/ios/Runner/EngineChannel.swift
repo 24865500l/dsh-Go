@@ -537,6 +537,10 @@ final class EngineChannel: NSObject, FlutterStreamHandler {
 
   private var backgroundTask = UIBackgroundTaskIdentifier.invalid
   private let continued = ContinuedRun()
+  // Main-thread sources: a native phone task may begin before Flutter's new
+  // conversation has appeared in its session list.
+  private var localTurnRunning = false
+  private var phoneTaskRunning = false
   private let pathMonitor = NWPathMonitor()
   private var pathStarted = false
 
@@ -571,6 +575,11 @@ final class EngineChannel: NSObject, FlutterStreamHandler {
       }
     }
     MainActor.assumeIsolated {
+      IOSPhoneControl.shared.onTaskActivityChanged = { [weak self] active in
+        guard let self else { return }
+        self.phoneTaskRunning = active
+        self.continued.update(running: self.localTurnRunning || active)
+      }
       IOSPetOverlay.shared.onKeepingAliveChanged = { [weak self] active in
         self?.queue.async { [weak self] in
           self?.lifecycle.observe(pictureInPicture: active)
@@ -672,7 +681,10 @@ final class EngineChannel: NSObject, FlutterStreamHandler {
           reply(nil)
         case "turnRunning":
           let running = arguments["running"] as? Bool ?? false
-          DispatchQueue.main.async { [self] in continued.update(running: running) }
+          DispatchQueue.main.async { [self] in
+            localTurnRunning = running
+            continued.update(running: running || phoneTaskRunning)
+          }
           reply(nil)
         case "reset":
           try reset(keep: arguments["keep"] as? [String] ?? []) { reply(nil) } failed: { reply(self.flutterError($0)) }

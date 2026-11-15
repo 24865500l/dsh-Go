@@ -43,6 +43,7 @@ def recipe_inputs(runtime, version):
     # affect an Android image. Keep sha256sum's own filename escaping.
     paths = {"patches/" + name for name in names}
     paths.add("patches/pins.json")
+    paths.add("patches/series")
     for directory in ("bridge", "boot", "direct"):
         root = runtime / directory
         if not root.is_dir():

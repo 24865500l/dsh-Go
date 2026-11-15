@@ -24,6 +24,7 @@ final class ContinuedRun {
   func update(running: Bool) {
     guard running != wanted else { return }
     wanted = running
+    trace(running ? "requested" : "idle")
     if running {
       spent = false
       submit()
@@ -50,17 +51,20 @@ final class ContinuedRun {
       }
       self.started(task)
     }
-    guard registered else { return }
+    guard registered else { trace("registration-failed"); return }
     let request = BGContinuedProcessingTaskRequest(
       identifier: identifier,
       title: String(localized: "DSH Go is working"),
       subtitle: String(localized: "This conversation is still going"))
     // Now or not at all: a turn is no use to anyone once it has already paused.
     request.strategy = .fail
+    submitted = identifier
     do {
       try BGTaskScheduler.shared.submit(request)
-      submitted = identifier
+      trace("submitted")
     } catch {
+      if submitted == identifier { submitted = nil }
+      trace("submit-failed-\((error as NSError).code)")
       // The system said no. The engine pauses in the background, as it does without this.
     }
   }
@@ -73,10 +77,12 @@ final class ContinuedRun {
     }
     submitted = nil
     self.task = task
+    trace("running")
     task.expirationHandler = { [weak self, weak task] in
       DispatchQueue.main.async {
         guard let self, let task, self.task === task else { return }
         self.spent = true
+        self.trace("expired")
         self.finish(success: false)
       }
     }
@@ -86,6 +92,16 @@ final class ContinuedRun {
       task?.progress.completedUnitCount += 1
     }
     onChange?(true)
+  }
+
+  // Bounded, content-free development evidence for actual OS acceptance.
+  // Never include tool arguments, endpoints, tokens or conversation identifiers.
+  private func trace(_ stage: String) {
+    guard let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+    let file = directory.appendingPathComponent("dsh-background-task.log")
+    let previous = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+    let line = "\(Date().timeIntervalSince1970) continued \(stage)\n"
+    try? (String(previous.suffix(8192)) + line).write(to: file, atomically: true, encoding: .utf8)
   }
 
   private func finish(success: Bool) {

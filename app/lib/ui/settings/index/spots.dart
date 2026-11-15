@@ -65,6 +65,7 @@ enum SettingsPageId {
   agentPresets,
   phone,
   phoneAppRules,
+  phoneAndroidShell,
   phoneDnd,
   phoneUnlocks,
   webSearch,
@@ -389,6 +390,12 @@ final _pages = <SettingsPageMeta>[
     title: (l) => l.phoneAppRulesTitle,
     parent: SettingsPageId.phone,
     keywords: (l) => l.searchKwAppRules,
+  ),
+  SettingsPageMeta(
+    SettingsPageId.phoneAndroidShell,
+    title: (l) => l.androidShellTitle,
+    parent: SettingsPageId.phone,
+    keywords: (l) => l.androidShellEntryHint,
   ),
   SettingsPageMeta(
     SettingsPageId.phoneDnd,
@@ -819,6 +826,18 @@ abstract final class Spots {
     keywords: (l) => l.searchKwPetDisplayWhen,
     androidOnly: true,
   );
+  static final petOverlayShows = SettingSpot(
+    'pet-overlay-shows',
+    page: SettingsPageId.pets,
+    title: (l) => l.botsPetOverlayShows,
+    keywords: (l) => l.searchKwPetOverlayShows,
+  );
+  static final petOverlayFraming = SettingSpot(
+    'pet-overlay-framing',
+    page: SettingsPageId.pets,
+    title: (l) => l.botsPetOverlayFraming,
+    keywords: (l) => l.searchKwPetOverlayFraming,
+  );
 
   // 界面.
   static final uiMode = SettingSpot(
@@ -832,6 +851,12 @@ abstract final class Spots {
     page: SettingsPageId.interface,
     title: (l) => l.hubHardwareEnterSends,
     keywords: (l) => l.hubHardwareEnterSendsHint,
+  );
+  static final chatSuggestions = SettingSpot(
+    'chat-suggestions',
+    page: SettingsPageId.interface,
+    title: (l) => l.hubChatSuggestions,
+    keywords: (l) => l.searchKwChatSuggestions,
   );
   static final quickPanel = SettingSpot(
     'quick-panel',
@@ -1141,8 +1166,11 @@ final _rows = <SettingSpot>[
   Spots.petQuiet,
   Spots.petOutsideApp,
   Spots.petDisplayWhen,
+  Spots.petOverlayShows,
+  Spots.petOverlayFraming,
   Spots.uiMode,
   Spots.hardwareEnterSends,
+  Spots.chatSuggestions,
   Spots.quickPanel,
   Spots.tableTint,
   Spots.webApp,
