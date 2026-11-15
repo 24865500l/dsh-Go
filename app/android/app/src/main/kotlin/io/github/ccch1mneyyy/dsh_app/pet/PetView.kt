@@ -49,6 +49,9 @@ internal class PetView(context: Context, private val listener: Listener) : Frame
 
         /** The second tap of a quick pair, or the accessibility click: open the conversation. */
         fun onTap(leftHalf: Boolean)
+
+        /** The third of three quick taps: open the quick chat window. */
+        fun onTripleTap()
         fun onLongPress(rawX: Float?, rawY: Float?)
         fun onMenuMove(rawX: Float, rawY: Float)
         fun onMenuEnd(rawX: Float, rawY: Float, cancelled: Boolean)
@@ -207,14 +210,34 @@ internal class PetView(context: Context, private val listener: Listener) : Frame
     private var lastX = 0f
     private var lastY = 0f
     private var tracker: VelocityTracker? = null
+    private val doubleTapTimeout = ViewConfiguration.getDoubleTapTimeout().toLong()
     private val taps = PetTaps(
-        ViewConfiguration.getDoubleTapTimeout().toLong(),
+        doubleTapTimeout,
         ViewConfiguration.get(context).scaledDoubleTapSlop.toFloat(),
     )
+
+    // One, two and three quick taps are told apart by waiting out the double-tap window: a run
+    // committed after it opens the conversation (two) or plays with the pet (one); a third tap
+    // inside it opens the quick chat window instead (see OverlayPolicy.PetTaps.count).
+    private var tapRun = 0
+    private var pokeLeft = false
+    private var pokeX = 0.5f
+    private var pokeY = 0.5f
+    private val commitTaps = Runnable {
+        val n = tapRun
+        tapRun = 0
+        when (n) {
+            1 -> listener.onPoke(pokeLeft, pokeX, pokeY)
+            2 -> listener.onTap(pokeLeft)
+        }
+    }
+
     private val longPress = Runnable {
         if (touching && !dragging) {
             longPressed = true
             taps.clear()
+            removeCallbacks(commitTaps)
+            tapRun = 0
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             listener.onLongPress(lastX, lastY)
         }
@@ -248,6 +271,8 @@ internal class PetView(context: Context, private val listener: Listener) : Frame
                 if (!dragging && !longPressed && (abs(dx) > slop || abs(dy) > slop)) {
                     dragging = true
                     taps.clear()
+                    removeCallbacks(commitTaps)
+                    tapRun = 0
                     removeCallbacks(longPress)
                     listener.onDragStart()
                 }
@@ -266,13 +291,18 @@ internal class PetView(context: Context, private val listener: Listener) : Frame
                         // Left and right halves split at the body's centre line (anchor.x), not the window's.
                         val left = event.x + frame.left < if (size != null) width / 2f else
                             (sprites?.let { (it.pack.anchorX - it.window.x) * it.screenScale } ?: (width / 2f))
-                        if (taps.second(event.downTime, event.eventTime, event.rawX, event.rawY)) listener.onTap(left)
-                        else if (size == null) listener.onPoke(left, 0.5f, 0.5f)
-                        else listener.onPoke(
-                            left,
-                            (event.x + companionBounds.left) / size.width,
-                            (event.y + companionBounds.top) / size.height,
-                        )
+                        pokeLeft = left
+                        pokeX = if (size == null) 0.5f else (event.x + companionBounds.left) / size.width
+                        pokeY = if (size == null) 0.5f else (event.y + companionBounds.top) / size.height
+                        val n = taps.count(event.downTime, event.eventTime, event.rawX, event.rawY)
+                        removeCallbacks(commitTaps)
+                        if (n >= 3) {
+                            tapRun = 0
+                            listener.onTripleTap()
+                        } else {
+                            tapRun = n
+                            postDelayed(commitTaps, doubleTapTimeout + 40L)
+                        }
                     }
                 }
                 reset()
@@ -298,6 +328,8 @@ internal class PetView(context: Context, private val listener: Listener) : Frame
 
     private fun cancelGesture() {
         taps.clear()
+        removeCallbacks(commitTaps)
+        tapRun = 0
         val held = touching && longPressed
         val dragged = touching && dragging
         reset()

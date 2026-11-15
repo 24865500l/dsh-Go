@@ -15,6 +15,7 @@ import '../state/connection_state.dart';
 import '../state/hosts_state.dart';
 import '../state/notify_state.dart';
 import '../state/sessions_state.dart';
+import '../state/usage_state.dart';
 import '../voice/voice_model_assets.dart';
 import 'overlay_channel.dart';
 import 'pet_signals.dart';
@@ -164,12 +165,37 @@ class PetOverlayActions {
           'line': '${snippet(session.title, max: 20) ?? appL10n.commonUntitledChat} · $label',
         },
       if (connection == null || generation == null) 'problem': appL10n.commonEngineUnreachable,
+      'usage': _usageLine(session?.sessionId),
       'voice': ref.read(localConnectionProvider).value?.client.mux.generation == null
           ? 'off'
           : voice == null
           ? 'missing'
           : 'ready',
     };
+  }
+
+  /// One line of token use for the conversation the bar would send to; null when it is a new
+  /// chat or the host has not reported any yet.
+  String? _usageLine(String? sessionId) {
+    if (sessionId == null || !ref.mounted) return null;
+    final u = ref.read(sessionUsageProvider(sessionId));
+    final context = u.contextTokens;
+    final window = u.contextWindow;
+    if (context == null && !u.hasTokens) return null;
+    final parts = <String>[];
+    if (context != null && window != null) {
+      final fraction = u.contextFraction;
+      final share = fraction == null ? '' : ' · ${(fraction * 100).round()}%';
+      parts.add('${appL10n.activityUsageContext} ${_tokens(context)} / ${_tokens(window)}$share');
+    }
+    if (u.hasTokens) parts.add('in ${_tokens(u.input)} · out ${_tokens(u.output)}');
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  static String _tokens(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+    return '$n';
   }
 
   Future<Map<String, Object?>> _send(Map args) async {

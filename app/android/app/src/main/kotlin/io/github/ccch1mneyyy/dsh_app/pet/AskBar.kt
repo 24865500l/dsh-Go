@@ -29,7 +29,15 @@ import android.widget.TextView
  * ([fresh]); [problem] when nothing can be sent there (the engine is off, no host); whether the
  * offline voice model can take a recording ([voice]).
  */
-data class AskTarget(val current: AskChat?, val fresh: AskChat?, val problem: String?, val voice: String, val offer: Long? = null) {
+data class AskTarget(
+    val current: AskChat?,
+    val fresh: AskChat?,
+    val problem: String?,
+    val voice: String,
+    val offer: Long? = null,
+    /** One line of token use of the target conversation, as Dart formats it; null when unknown. */
+    val usage: String? = null,
+) {
     /** One conversation (null [sessionId]: a new one) and its one line, 「修复登录 · 本机」. */
     data class AskChat(val sessionId: String?, val host: String?, val line: String)
 
@@ -44,6 +52,7 @@ data class AskTarget(val current: AskChat?, val fresh: AskChat?, val problem: St
         const val VOICE_MISSING = "missing"
         const val VOICE_OFF = "off"
         private const val MAX_LINE = 40
+        private const val MAX_USAGE = 120
 
         fun fromMap(raw: Any?): AskTarget? {
             val m = raw as? Map<*, *> ?: return null
@@ -61,6 +70,7 @@ data class AskTarget(val current: AskChat?, val fresh: AskChat?, val problem: St
                 fresh = chat(m["fresh"])?.copy(sessionId = null),
                 problem = PetPush.clean(m["problem"] as? String, MAX_LINE),
                 voice = (m["voice"] as? String)?.takeIf { it == VOICE_READY || it == VOICE_MISSING } ?: VOICE_OFF,
+                usage = PetPush.clean(m["usage"] as? String, MAX_USAGE),
             )
         }
     }
@@ -165,6 +175,14 @@ internal class AskBarView(context: Context, private val listener: Listener) : Li
         setTextColor(palette.muted)
         visibility = GONE
     }
+    /** Token use of the target conversation: a quiet second line under the input, hidden when unknown. */
+    private val usage = TextView(context).apply {
+        textSize = 11f
+        setTextColor(palette.muted)
+        maxLines = 2
+        ellipsize = TextUtils.TruncateAt.END
+        visibility = GONE
+    }
     private var blocked = false
     private var busy = false
     private var listening = false
@@ -188,6 +206,7 @@ internal class AskBarView(context: Context, private val listener: Listener) : Li
         row.addView(mic, LayoutParams(size, size).apply { marginStart = context.dp(8f) })
         row.addView(sendKey, LayoutParams(size, size).apply { marginStart = context.dp(8f) })
         addView(row, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { topMargin = context.dp(6f) })
+        addView(usage, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { topMargin = context.dp(4f) })
         addView(status, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { topMargin = context.dp(6f) })
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -255,6 +274,12 @@ internal class AskBarView(context: Context, private val listener: Listener) : Li
         status.text = text
         status.setTextColor(if (error) palette.danger else palette.muted)
         status.visibility = if (text == null) GONE else VISIBLE
+    }
+
+    /** Token use of the conversation this sends to. Null (or blank) hides the line. */
+    fun setUsage(text: String?) {
+        usage.text = text
+        usage.visibility = if (text.isNullOrBlank()) GONE else VISIBLE
     }
 
     /** [problem]: nothing can be sent now; [sending]: a send is on its way. */

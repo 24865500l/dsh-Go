@@ -1169,6 +1169,19 @@ internal object PetOverlay {
             showMenu(rawX, rawY)
         }
 
+        /**
+         * Three quick taps: the quick chat bar (问一句) without the wheel, from any app. The first
+         * two taps only played with the pet / opened the conversation once the window closed
+         * without a third one.
+         */
+        override fun onTripleTap() {
+            if (!alive(ticket)) return
+            machine.onTouch(now())
+            if (dimmed) evaluate()
+            dismissMenu()
+            if (!machine.appForeground) showAsk(fresh = false, sticky = true)
+        }
+
         override fun onMenuMove(rawX: Float, rawY: Float) {
             if (alive(ticket)) menuView?.movePointer(rawX, rawY)
         }
@@ -1691,14 +1704,17 @@ internal object PetOverlay {
     private var pendingVoice = false
     private var returnAsk = false
     private var askRequest = 0L
+    /** The bar was opened by the pet's triple tap: keep it open after a send, ready for another. */
+    private var askSticky = false
 
     /**
      * Opens the bar beside the docked pet ([fresh]: on 「新对话」), focused, the keyboard up; asks
      * Dart where a send would go meanwhile.
      */
-    private fun showAsk(fresh: Boolean) {
+    private fun showAsk(fresh: Boolean, sticky: Boolean = false) {
         if (capture.inFlight || !interactive()) return
         removeAsk()
+        askSticky = sticky
         val ctx = hostContext ?: return
         val pv = petView ?: return
         val f = loaded?.frames ?: return
@@ -1759,6 +1775,7 @@ internal object PetOverlay {
         val t = askTarget ?: return
         val fresh = askFresh || t.current == null
         view.setTarget(t.chat(fresh)?.line ?: AppStrings.get(app, R.string.pet_new_chat), t.canSwitch, fresh)
+        view.setUsage(t.usage)
         view.setStatus(t.problem, error = t.problem != null)
         view.setState(problem = t.problem != null)
     }
@@ -1842,7 +1859,12 @@ internal object PetOverlay {
                         // cannot resurrect text the host already accepted.
                         askView?.input?.setText("")
                         prefs.edit().remove("ask_draft").apply()
-                        if (current) removeAsk()
+                        // The triple-tap bar stays up for the next line; the wheel's one closes.
+                        when {
+                            !current -> Unit
+                            askSticky -> view.setStatus(AppStrings.get(app, R.string.pet_ask_sent))
+                            else -> removeAsk()
+                        }
                     }
                 }
                 r != null -> if (current) {
@@ -1861,6 +1883,7 @@ internal object PetOverlay {
 
     private fun removeAsk() {
         askRequest++
+        askSticky = false
         stopRecording()
         askView?.let { v ->
             askDraft = v.input.text?.toString() ?: askDraft

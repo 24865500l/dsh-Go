@@ -1,0 +1,94 @@
+# 只为「三连点快捷对话浮窗」这一改动构建 arm64 APK。
+#
+# 用法：把本文件放到 fork 的 .github/workflows/ 下，推送到任意分支（或在 Actions 里
+# 手动 Run workflow），运行结束后在页面底部 Artifacts 下载
+# dsh-go-pet-quick-window-apk，解压得到 app-arm64-release.apk。
+#
+# 为什么需要这一整个流程：release APK 必须带上 runtime/out/arm64-v8a（proot / node /
+# 本机引擎），它不在仓库里，要先跑 runtime/build-runtime.sh 生成；无 key.properties 时
+# release 用 debug 签名，能装但和官方包签名不同，安装前要先卸载官方 App。
+name: Pet quick window APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [pet-quick-window]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pet-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.47.7
+  NODE_VERSION: 24.22.1
+  TZ: Asia/Shanghai
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # 运行时下载（dsh npm 包、node 二进制）很大，尽量命中缓存。
+      - name: Restore the runtime download cache
+        uses: actions/cache/restore@v4
+        with:
+          path: runtime/.cache
+          key: runtime-downloads-v1-${{ hashFiles('runtime/build-runtime.sh', 'runtime/locks/**') }}
+          restore-keys: runtime-downloads-v1-
+
+      - name: Build the bundled arm64 runtime
+        run: runtime/build-runtime.sh arm64-v8a
+
+      - name: Check the runtime bundle
+        run: python3 -I tooling/check_runtime_bundle.py arm64
+
+      - name: Save the runtime download cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: runtime/.cache
+          key: runtime-downloads-v1-${{ hashFiles('runtime/build-runtime.sh', 'runtime/locks/**') }}-${{ github.run_id }}
+
+      - name: Flutter dependencies
+        working-directory: app
+        run: |
+          flutter pub get --enforce-lockfile
+          printf 'sdk.dir=%s\nflutter.sdk=%s\n' "$ANDROID_HOME" "$FLUTTER_ROOT" > android/local.properties
+
+      # 直接用 flutter build，不走 tooling/build-apk.sh：那条路在 release 下强制先编
+      # libtawcroot.so，需要 NDK + 联网拉上游源码，CI 上经常失败；这一版只需要能装的 APK。
+      - name: Build the APK
+        working-directory: app
+        run: |
+          flutter build apk --release --flavor arm64 --target-platform android-arm64 \
+            --build-name 1.1.0-pet --build-number 2026111501
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-go-pet-quick-window-apk
+          path: app/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 30

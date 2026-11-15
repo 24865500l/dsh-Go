@@ -303,7 +303,27 @@ internal class PetTaps(private val timeoutMs: Long, private val slop: Float) {
     }
 
     /** A drag, a long press or a cancelled touch came in between: the next tap starts over. */
-    fun clear() { waiting = false }
+    fun clear() {
+        waiting = false
+        run = 0
+    }
+
+    private var run = 0
+    private var runAt = 0L
+    private var runX = 0f
+    private var runY = 0f
+
+    /**
+     * How many taps in a row this one completes: 1, 2 or 3 (a fourth starts over at 1), for the
+     * caller to hold the first two until the double-tap window closes, so a third tap can still
+     * become a triple. Kept apart from [second]'s state: the two are read by different callers.
+     */
+    fun count(downMs: Long, upMs: Long, tapX: Float, tapY: Float): Int {
+        val near = run > 0 && downMs - runAt in 0..timeoutMs && hypot(tapX - runX, tapY - runY) <= slop
+        run = if (near) (run % 3) + 1 else 1
+        runAt = upMs; runX = tapX; runY = tapY
+        return run
+    }
 }
 
 /**
